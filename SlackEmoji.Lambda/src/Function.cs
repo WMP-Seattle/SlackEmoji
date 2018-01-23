@@ -1,12 +1,15 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 
 using Amazon.Lambda.Core;
 using Amazon.Lambda.S3Events;
 using Amazon.S3;
+using Amazon.S3.Model;
 using Amazon.S3.Util;
+using slackemoji.img;
 
 // Assembly attribute to enable the Lambda function's JSON input to be converted into a .NET class.
 [assembly: LambdaSerializer(typeof(Amazon.Lambda.Serialization.Json.JsonSerializer))]
@@ -53,8 +56,38 @@ namespace SlackEmoji_Lambda
 
             try
             {
-                var response = await this.S3Client.GetObjectMetadataAsync(s3Event.Bucket.Name, s3Event.Object.Key);
-                return response.Headers.ContentType;
+                // get image from s3
+                var image = await S3Client.GetObjectAsync(s3Event.Bucket.Name, s3Event.Object.Key);
+                using (image.ResponseStream)
+                using (var imgMs = new MemoryStream())
+                {
+                    image.ResponseStream.CopyTo(imgMs);
+
+                    // resize image
+                    ImageResizer imgResizer = new ImageResizer();
+                    var outputImage = imgResizer.ResizeImage(imgMs.ToArray());
+
+                    // get file without ext
+                    var filename = image.Key.Substring(0, image.Key.LastIndexOfAny(".".ToCharArray()));
+                    var destFilename = $"{filename}-emoji.png";
+
+                    using (var destMs = new MemoryStream(outputImage))
+                    {
+                        // upload file to s3
+                        await S3Client.UploadObjectFromStreamAsync("cb-slack-images", $"slack-emojis/{destFilename}", destMs, null);
+
+                        // generate presigned request to download image
+                        var preSignedReq = new GetPreSignedUrlRequest()
+                        {
+                            BucketName = s3Event.Bucket.Name,
+                            Key = destFilename,
+                            Expires = DateTime.UtcNow.AddHours(1)
+                        };
+                        var url = this.S3Client.GetPreSignedURL(preSignedReq);
+      
+                        return url;
+                    }
+                }
             }
             catch(Exception e)
             {
