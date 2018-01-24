@@ -14,7 +14,7 @@ using slackemoji.img;
 // Assembly attribute to enable the Lambda function's JSON input to be converted into a .NET class.
 [assembly: LambdaSerializer(typeof(Amazon.Lambda.Serialization.Json.JsonSerializer))]
 
-namespace SlackEmoji_Lambda
+namespace SlackEmoji.Lambda
 {
     public class Function
     {
@@ -56,6 +56,7 @@ namespace SlackEmoji_Lambda
 
             try
             {
+                Console.WriteLine($"Recieved S3 Event:  {s3Event.Object.Key} from bucket {s3Event.Bucket.Name}");
                 // get image from s3
                 var image = await S3Client.GetObjectAsync(s3Event.Bucket.Name, s3Event.Object.Key);
                 using (image.ResponseStream)
@@ -69,18 +70,19 @@ namespace SlackEmoji_Lambda
 
                     // get file without ext
                     var filename = image.Key.Substring(0, image.Key.LastIndexOfAny(".".ToCharArray()));
-                    var destFilename = $"{filename}-emoji.png";
+                    var destFilenameKey = $"slack-emojis/{filename}-emoji.png";
 
                     using (var destMs = new MemoryStream(outputImage))
                     {
                         // upload file to s3
-                        await S3Client.UploadObjectFromStreamAsync("cb-slack-images", $"slack-emojis/{destFilename}", destMs, null);
+                        await S3Client.UploadObjectFromStreamAsync("cb-slack-images", destFilenameKey, destMs, null);
+                        Console.WriteLine($"Saved object: {destFilenameKey}");
 
                         // generate presigned request to download image
                         var preSignedReq = new GetPreSignedUrlRequest()
                         {
                             BucketName = s3Event.Bucket.Name,
-                            Key = destFilename,
+                            Key = destFilenameKey,
                             Expires = DateTime.UtcNow.AddHours(1)
                         };
                         var url = this.S3Client.GetPreSignedURL(preSignedReq);
