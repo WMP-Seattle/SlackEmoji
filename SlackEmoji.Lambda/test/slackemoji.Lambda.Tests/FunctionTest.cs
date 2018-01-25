@@ -6,9 +6,7 @@ using System.Threading.Tasks;
 using Xunit;
 using Amazon.Lambda.Core;
 using Amazon.Lambda.TestUtilities;
-
-using myfunc;
-using SlackEmoji_Lambda;
+using SlackEmoji.Lambda;
 
 namespace myfunc.Tests
 {
